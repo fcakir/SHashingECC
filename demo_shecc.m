@@ -29,10 +29,11 @@
 
 function resfn = demo_shecc(ftype, dataset, nbits, varargin)
 
+	fprintf('%s\n',repmat('*',[1 80]));
 	opts = get_opts_shecc(ftype, dataset, nbits, varargin{:});  % set parameters
 
 	% add libsvm-weights to path
-	addpath(genpath('/research/codebooks/hashing_project/code/libsvm-weights/'));
+	addpath(genpath(opts.libsvm_path));
 	
 	if opts.override	
 		opts.use_larger_model = 0;
@@ -55,13 +56,13 @@ function resfn = demo_shecc(ftype, dataset, nbits, varargin)
 			if any(expdir_folders_exist)
 				myLogInfo('Found model for lenghtier codes!');
 				k = find(expdir_folders_exist);
-				oexpdir = opts.expdir;
-				opts.expdir = expdir_folders{k(end)};
-				myLogInfo('Using model %s',opts.expdir);
+				o_outputdir = opts.outputdir;
+				opts.outputdir = expdir_folders{k(end)};
+				myLogInfo('Using model at %s',opts.outputdir);
 				
 				run_trial = zeros(1, opts.ntrials);
 				for t = 1:opts.ntrials
-					trial_model_file = sprintf('%s/trial%d.mat',opts.expdir , t);
+					trial_model_file = sprintf('%s/trial%d.mat',opts.outputdir , t);
 					
 					if exist(trial_model_file, 'file')
 						run_trial(t) = 0;
@@ -72,11 +73,11 @@ function resfn = demo_shecc(ftype, dataset, nbits, varargin)
 
 				if any(run_trial)
 					myLogInfo('Missing trials for larger code model, running for actual code length.');
-					opts.expdir = oexpdir;
+					opts.outputdir = o_outputdir;
 					opts.use_larger_model = 0;
 				else
 					% Check whether results already exist
-					c_Rprefix = sprintf('%s/%s', oexpdir, opts.metric);
+					c_Rprefix = sprintf('%s/%s', o_outputdir, opts.metric);
 					
 					% 0. result files
 					if opts.test_frac < 1
@@ -105,7 +106,7 @@ function resfn = demo_shecc(ftype, dataset, nbits, varargin)
 		end
 	end
 	if ~opts.use_larger_model
-		Rprefix = sprintf('%s/%s', opts.expdir, opts.metric);
+		Rprefix = sprintf('%s/%s', opts.outputdir, opts.metric);
 		
 		% 0. result files
 		if opts.test_frac < 1
@@ -130,7 +131,7 @@ function resfn = demo_shecc(ftype, dataset, nbits, varargin)
     else
         run_trial = zeros(1, opts.ntrials);
         for t = 1:opts.ntrials
-            trial_model_file = sprintf('%s/trial%d.mat', opts.expdir, t);
+            trial_model_file = sprintf('%s/trial%d.mat', opts.outputdir, t);
             if exist(trial_model_file, 'file')
                 run_trial(t) = 0;
             else
@@ -161,7 +162,7 @@ function resfn = demo_shecc(ftype, dataset, nbits, varargin)
 		myLogInfo('Testing models...');
 		test_shecc(resfn, res_trial_fn, res_exist, opts);
 	elseif opts.use_larger_model
-		if opts.larger_model_testing
+		if larger_model_testing
 			myLogInfo('Testing with larger models...');
 			test_shecc(c_resfn, c_res_trial_fn, c_res_exist, opts);
 		else
@@ -169,6 +170,7 @@ function resfn = demo_shecc(ftype, dataset, nbits, varargin)
 		end
 	end
 	myLogInfo('Testing is done.');
+	diary('off');
 	if opts.use_larger_model
 		resfn = c_resfn;
 	end
@@ -199,6 +201,8 @@ function opts = get_opts_shecc(ftype, dataset, nbits, varargin)
 		'/research/object_detection/cachedir/online-hashing/shecc', @isstr);
 	ip.addParamValue('alpha', 0.01, @isscalar);
 	ip.addParamValue('use_larger_model',1,@isscalar);
+	ip.addParamValue('libsvm_path','/research/codebooks/hashing_project/code/libsvm-weights/');
+	ip.addParamValue('datadir','./data'); 
 	% parse input
 	ip.parse(varargin{:});
 	opts = ip.Results;
@@ -246,11 +250,11 @@ function opts = get_opts_shecc(ftype, dataset, nbits, varargin)
 	myLogInfo('identifier: %s', opts.identifier);
 
 	% set expdir
-	opts.expdir = sprintf('%s/%s', opts.localdir, opts.identifier);
-	if ~exist(opts.expdir, 'dir'), 
-		myLogInfo(['creating opts.expdir: ' opts.expdir]);
-		mkdir(opts.expdir); 
-		if ~opts.windows, unix(['chmod g+rw ' opts.expdir]); end
+	opts.outputdir = sprintf('%s/%s', opts.localdir, opts.identifier);
+	if ~exist(opts.outputdir, 'dir'), 
+		myLogInfo(['creating opts.outputdir: ' opts.outputdir]);
+		mkdir(opts.outputdir); 
+		if ~opts.windows, unix(['chmod g+rw ' opts.outputdir]); end
 	end
 
 	% decipher evaluation metric
@@ -263,6 +267,21 @@ function opts = get_opts_shecc(ftype, dataset, nbits, varargin)
 	else 
 		assert(strcmp(opts.metric, 'mAP'), 'unknown opts.metric');
 	end
+
+	disp(opts);
+	if opts.override
+	    try
+		unix(['rm -f ' opts.expdir '/diary*']);
+	    end
+	end
+	diary_index = 1;
+	opts.diary_name = sprintf('%s/diary_%03d.txt', opts.outputdir, diary_index);
+	while exist(opts.diary_name,'file') % && ~opts.override
+	    diary_index = diary_index + 1;
+	    opts.diary_name = sprintf('%s/diary_%03d.txt', opts.outputdir, diary_index);
+	end
+	diary(opts.diary_name);
+	diary('on');
 
 end
 
@@ -277,7 +296,7 @@ function train_shecc(run_trial, opts)
 		end
 		myLogInfo('%s: %d trainPts, random trial %d', opts.identifier, opts.noTrainingPoints, t);
 
-		prefix = sprintf('%s/trial%d', opts.expdir, t);
+		prefix = sprintf('%s/trial%d', opts.outputdir, t);
 
 		% Learn hash mapping
 		[train_time(t)] = shecc(Xtrain, Ytrain, ...
@@ -303,7 +322,7 @@ function [traintimes] = shecc(Xtrain, Ytrain, prefix, trialNo, opts)
 	[n,d]       	= size(Xtrain);
 	ind		= randperm(n);
 	train_data 	= Xtrain(ind(1:opts.noTrainingPoints),:);
-	train_labels 	= floor(Ytrain(ind(1:opts.noTrainingPoints))/10); % ShECC cannot be performed on multi-labelled datasetes
+	train_labels 	= Ytrain(ind(1:opts.noTrainingPoints)); % ShECC cannot be performed on multi-labelled datasetes
 	
 	myLogInfo('[T%02d] %d training size, learner ''%s''', trialNo, opts.noTrainingPoints,opts.learner);
 
@@ -452,8 +471,8 @@ function test_shecc(resfn, res_trial_fn, res_exist, opts)
 		testY = Ytest(idx, :);
 	end
 	if size(Ytrain, 2) == 1
-		trainY = floor(Ytrain/10);
-		testY  = floor(Ytest/10);
+		trainY = Ytrain;
+		testY  = Ytest;
 		cateTrainTest = [];
 	else
 		cateTrainTest = (trainY * testY' > 0);
@@ -468,7 +487,7 @@ function test_shecc(resfn, res_trial_fn, res_exist, opts)
 			load(res_trial_fn{t});
 		else
 			clear t_res t_train_time
-			Tprefix = sprintf('%s/trial%d', opts.expdir, t);
+			Tprefix = sprintf('%s/trial%d', opts.outputdir, t);
 			trial_model = load(sprintf('%s.mat', Tprefix));
 			Htrain = zeros(opts.nbits, tn ,'single');
 			myLogInfo('[T%02d]:Generating hash codes for TRAIN',t);
