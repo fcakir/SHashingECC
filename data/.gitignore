@@ -1,0 +1,5 @@
+# ignore everything in this directory
+# prevent uploading large data files to remote
+*
+# Except this file
+!.gitignore
